@@ -19,6 +19,10 @@ or Card Dweeb.
 - Configure page orientation, margins, spacing, image fitting, and cut lines.
 - Save downloaded images to both a ZIP archive and a folder.
 
+## Screenshot
+
+![Screenshot of the Adventure Time: Card Wars PDF Creator app](screenshot.png)
+
 ## Getting started
 
 ### Run the source file
