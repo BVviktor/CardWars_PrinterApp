@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#151829">
   <title>Card Wars — Print Studio</title>
-  <link rel="stylesheet" href="/styles.css">
-  <script src="/app.js" defer></script>
+  <base href="{{BASE_PATH}}">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
 </head>
 <body>
   <div class="backdrop" aria-hidden="true"></div>
@@ -71,6 +72,9 @@
           </div>
         </div>
         <div id="carddweeb-status" class="carddweeb-status" role="status" aria-live="polite"></div>
+        <div id="carddweeb-progress" class="loading-progress" role="progressbar" aria-label="Loading cards" aria-valuetext="In progress" hidden>
+          <span></span>
+        </div>
         <p class="download-note">Internet access is required. Images are retrieved from Card Dweeb and its public card-image sources.</p>
       </section>
 
@@ -82,7 +86,7 @@
             <p>Download the ready-to-print, two-sided token sheet.</p>
           </div>
         </div>
-        <a class="secondary-button token-download" href="/tokens.pdf" download="tokens_printable_2sidedPrint.pdf">
+        <a class="secondary-button token-download" href="tokens.pdf" download="tokens_printable_2sidedPrint.pdf">
           Download printable tokens
         </a>
       </section>
@@ -180,6 +184,9 @@
 
       <footer class="actions">
         <div class="status" id="status" role="status" aria-live="polite">Ready when you are.</div>
+        <div id="pdf-progress" class="loading-progress" role="progressbar" aria-label="Creating printable PDF" aria-valuetext="In progress" hidden>
+          <span></span>
+        </div>
         <button id="create-button" class="create-button" type="submit">
           <span>Create printable PDF</span><span aria-hidden="true">→</span>
         </button>

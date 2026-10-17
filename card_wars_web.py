@@ -2,6 +2,7 @@
 
 from email.parser import BytesParser
 from email.policy import default
+import argparse
 import json
 import os
 from pathlib import Path
@@ -42,6 +43,19 @@ def cleanup_packs():
 
 
 class CardWarsWebHandler(BaseHTTPRequestHandler):
+    base_path = "/"
+
+    def _route_path(self):
+        path = urlsplit(self.path).path
+        if self.base_path == "/":
+            return path
+        prefix = self.base_path.rstrip("/")
+        if path == prefix:
+            return "/"
+        if path.startswith(self.base_path):
+            return path[len(self.base_path) - 1:]
+        return None
+
     def _send_bytes(self, status, content_type, data, disposition=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -58,7 +72,10 @@ class CardWarsWebHandler(BaseHTTPRequestHandler):
         self._send_bytes(status, "application/json; charset=utf-8", data)
 
     def do_GET(self):
-        path = urlsplit(self.path).path
+        path = self._route_path()
+        if path is None:
+            self._send_error_json(404, "Not found.")
+            return
         if path == "/tokens.pdf":
             token_pdf = ROOT / "tokens_printable_2sidedPrint.pdf"
             try:
@@ -127,9 +144,9 @@ class CardWarsWebHandler(BaseHTTPRequestHandler):
             "/": (WEB_ROOT / "index.html", "text/html; charset=utf-8"),
             "/styles.css": (WEB_ROOT / "styles.css", "text/css; charset=utf-8"),
             "/app.js": (WEB_ROOT / "app.js", "text/javascript; charset=utf-8"),
-            "/background.webp": (
+            "/background.png": (
                 ROOT / "adventure-time-card-wars-episode-image.png",
-                "image/webp",
+                "image/png",
             ),
         }
         asset = assets.get(path)
@@ -143,6 +160,10 @@ class CardWarsWebHandler(BaseHTTPRequestHandler):
         except OSError as exc:
             self._send_error_json(500, f"Could not read web asset: {exc}")
             return
+        if path.name == "index.html":
+            data = data.replace(
+                b"{{BASE_PATH}}", self.base_path.encode("ascii")
+            )
         self._send_bytes(200, content_type, data)
 
     def _send_json(self, status, payload):
@@ -218,7 +239,10 @@ class CardWarsWebHandler(BaseHTTPRequestHandler):
                     self.wfile.write(chunk)
 
     def do_POST(self):
-        path = urlsplit(self.path).path
+        path = self._route_path()
+        if path is None:
+            self._send_error_json(404, "Not found.")
+            return
         if path in ("/api/download-set", "/api/download-deck"):
             self._download_pack(path)
             return
@@ -377,12 +401,57 @@ class CardWarsWebHandler(BaseHTTPRequestHandler):
             self._send_error_json(502, f"Card Dweeb download failed: {exc}")
 
 
-def main():
-    server = ThreadingHTTPServer(("127.0.0.1", 8765), CardWarsWebHandler)
-    url = f"http://127.0.0.1:{server.server_port}/"
+def normalize_base_path(base_path):
+    if not isinstance(base_path, str) or not base_path.startswith("/"):
+        raise ValueError("The base path must start with '/'.")
+    if base_path == "/":
+        return "/"
+    segments = base_path.strip("/").split("/")
+    if (
+        base_path.startswith("//")
+        or any(
+            not segment or segment in (".", "..")
+            or not re.fullmatch(r"[A-Za-z0-9._~-]+", segment)
+            for segment in segments
+        )
+    ):
+        raise ValueError("The base path contains an invalid path segment.")
+    return "/" + "/".join(segments) + "/"
+
+
+def create_server(host="127.0.0.1", port=8765, base_path="/"):
+    """Create an HTTP server that can be mounted at a URL path prefix."""
+    normalized_base_path = normalize_base_path(base_path)
+    handler = type(
+        "MountedCardWarsWebHandler",
+        (CardWarsWebHandler,),
+        {"base_path": normalized_base_path},
+    )
+    return ThreadingHTTPServer((host, port), handler)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Serve the Card Wars print studio.")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--base-path",
+        default="/",
+        help="URL path prefix when mounted behind another site (for example /card-wars/).",
+    )
+    parser.add_argument(
+        "--no-browser", action="store_true", help="Do not open a browser window."
+    )
+    args = parser.parse_args(argv)
+    try:
+        server = create_server(args.host, args.port, args.base_path)
+    except ValueError as exc:
+        parser.error(str(exc))
+    url = f"http://{args.host}:{server.server_port}{normalize_base_path(args.base_path)}"
     print(f"Card Wars PDF Creator is running at {url}")
     print("Press Ctrl+C to stop the local web server.")
-    webbrowser.open(url)
+    if not args.no_browser:
+        webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

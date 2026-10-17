@@ -26,7 +26,7 @@ body {
   background:
     linear-gradient(100deg, rgba(13, 16, 31, .94) 4%, rgba(15, 18, 34, .83) 52%, rgba(15, 18, 34, .73)),
     linear-gradient(0deg, #101321 0%, transparent 45%),
-    url("/background.webp") center 34% / cover no-repeat;
+    url("background.png") center 34% / cover no-repeat;
   opacity: .9;
 }
 
@@ -277,6 +277,45 @@ h2 {
   color: #ff9c9c;
 }
 
+.loading-progress {
+  position: relative;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(202, 203, 230, .14);
+}
+
+.loading-progress[hidden] {
+  display: none;
+}
+
+.carddweeb-panel > .loading-progress {
+  margin-top: 9px;
+}
+
+.actions > .loading-progress {
+  flex: 0 0 100%;
+  order: 3;
+}
+
+.loading-progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--purple), var(--cyan));
+  animation: loading-progress 1.2s ease-in-out infinite;
+}
+
+@keyframes loading-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(265%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-progress span { width: 100%; animation: none; }
+}
+
 .download-note {
   margin: 7px 0 0;
   color: #85899c;
@@ -318,6 +357,7 @@ h2 {
 }
 
 .field input:focus, .field select:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(168, 122, 255, .12); }
+.field input:disabled, .field select:disabled { cursor: not-allowed; opacity: .48; }
 .field select option { color: #f4f2f8; background: #171a2c; }
 .field-wide { grid-column: 1 / -1; }
 

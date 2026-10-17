@@ -12,6 +12,8 @@ const loadDecksButton = document.querySelector("#load-decks");
 const downloadSetButton = document.querySelector("#download-set");
 const downloadDeckButton = document.querySelector("#download-deck");
 const cardDweebStatus = document.querySelector("#carddweeb-status");
+const cardDweebProgress = document.querySelector("#carddweeb-progress");
+const pdfProgress = document.querySelector("#pdf-progress");
 const autoDetect = document.querySelector("#auto-detect");
 const cardTypeControls = [
   document.querySelector("#preset"),
@@ -19,6 +21,7 @@ const cardTypeControls = [
   document.querySelector("#height"),
 ];
 const maxLocalUploadBytes = 256 * 1024 * 1024;
+const appUrl = (path) => new URL(path, document.baseURI);
 let selectedFiles = [];
 let previewUrls = [];
 let selectedPacks = [];
@@ -61,7 +64,7 @@ function renderSelection() {
     for (let index = 0; index < pack.images && shown < 16; index += 1) {
       const image = document.createElement("img");
       image.className = "preview";
-      image.src = `/api/packs/${pack.token}/images/${index}`;
+      image.src = appUrl(`api/packs/${pack.token}/images/${index}`);
       image.alt = `${pack.name} card ${index + 1}`;
       image.title = image.alt;
       previews.append(image);
@@ -126,6 +129,7 @@ async function readJsonResponse(response) {
 
 function setCardDweebBusy(busy, message = "") {
   cardDweebBusy = busy;
+  cardDweebProgress.hidden = !busy;
   setSelect.disabled = busy;
   deckSelect.disabled = busy || deckChoices.size === 0;
   loadDecksButton.disabled = busy;
@@ -137,7 +141,7 @@ function setCardDweebBusy(busy, message = "") {
 
 async function initializeSets() {
   try {
-    const response = await fetch("/api/sets");
+    const response = await fetch(appUrl("api/sets"));
     const result = await readJsonResponse(response);
     setSelect.replaceChildren(...result.sets.map((name) => {
       const option = document.createElement("option");
@@ -155,7 +159,7 @@ loadDecksButton.addEventListener("click", async () => {
   if (cardDweebBusy) return;
   setCardDweebBusy(true, "Loading official and community decks from Card Dweeb…");
   try {
-    const response = await fetch("/api/decks");
+    const response = await fetch(appUrl("api/decks"));
     const result = await readJsonResponse(response);
     deckChoices = new Map(result.decks.map((deck) => [String(deck.id), deck]));
     deckSelect.replaceChildren(...result.decks.map((deck) => {
@@ -180,7 +184,7 @@ async function downloadCardPack(endpoint, payload) {
   if (cardDweebBusy) return;
   setCardDweebBusy(true, "Contacting Card Dweeb and downloading card images…");
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetch(appUrl(endpoint), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -190,7 +194,7 @@ async function downloadCardPack(endpoint, payload) {
     renderSelection();
 
     const archiveLink = document.createElement("a");
-    archiveLink.href = `/api/packs/${pack.token}/archive`;
+    archiveLink.href = appUrl(`api/packs/${pack.token}/archive`);
     archiveLink.download = `${pack.name.replace(/[<>:"/\\|?*]/g, "_")}_cards.zip`;
     document.body.append(archiveLink);
     archiveLink.click();
@@ -212,14 +216,14 @@ async function downloadCardPack(endpoint, payload) {
 
 downloadSetButton.addEventListener("click", () => {
   if (setSelect.value) {
-    downloadCardPack("/api/download-set", { set: setSelect.value });
+    downloadCardPack("api/download-set", { set: setSelect.value });
   }
 });
 
 downloadDeckButton.addEventListener("click", () => {
   const deck = deckChoices.get(deckSelect.value);
   if (deck) {
-    downloadCardPack("/api/download-deck", { id: deck.id, name: deck.name });
+    downloadCardPack("api/download-deck", { id: deck.id, name: deck.name });
   }
 });
 
@@ -254,11 +258,12 @@ form.addEventListener("submit", async (event) => {
   };
 
   createButton.disabled = true;
+  pdfProgress.hidden = false;
   status.textContent = "Creating your PDF. Large decks may take a little while…";
   try {
     let response;
     if (!selectedFiles.length) {
-      response = await fetch("/create-pdf-from-packs", {
+      response = await fetch(appUrl("create-pdf-from-packs"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -274,7 +279,7 @@ form.addEventListener("submit", async (event) => {
         JSON.stringify(selectedPacks.map((pack) => pack.token)),
       );
       selectedFiles.forEach((file) => payload.append("images", file, file.name));
-      response = await fetch("/create-pdf", { method: "POST", body: payload });
+      response = await fetch(appUrl("create-pdf"), { method: "POST", body: payload });
     }
     if (!response.ok) {
       let message = `PDF creation failed (${response.status}).`;
@@ -302,6 +307,7 @@ form.addEventListener("submit", async (event) => {
       : error.message || "Could not create the PDF.";
     status.classList.add("error");
   } finally {
+    pdfProgress.hidden = true;
     createButton.disabled = false;
   }
 });

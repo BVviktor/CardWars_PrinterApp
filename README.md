@@ -61,6 +61,76 @@ downloads are retrieved from Card Dweeb and its public image sources. Internet
 access is required for the set/deck tools; local image printing does not
 require an internet connection.
 
+### Embed the print studio in another page
+
+The print studio is a small frontend in `web/` backed by the API in
+`card_wars_web.py`. It cannot be used as a standalone static HTML file: PDF
+creation and Card Dweeb downloads require the Python server and its
+dependencies. The static files can be embedded in another page using an
+`iframe` while the server is running:
+
+```html
+<iframe
+  src="http://127.0.0.1:8765/"
+  title="Card Wars print studio"
+  style="display:block; width:100%; min-height:1100px; border:0"
+  loading="lazy">
+</iframe>
+```
+
+For example, start the server without opening another browser window:
+
+```powershell
+python card_wars_web.py --no-browser
+```
+
+The embed page and browser must run on the same computer as this server,
+because it listens on `127.0.0.1` by default. If the embedding page uses
+HTTPS, serve the print studio over HTTPS on the same origin (for example,
+through your web server's reverse proxy); browsers may block an HTTP iframe
+inside an HTTPS page.
+
+To run the app under a URL prefix when integrating it with a site, use
+`--base-path` and configure the site's reverse proxy to forward that prefix
+to the Python server while preserving the path:
+
+```powershell
+python card_wars_web.py --base-path /card-wars/ --no-browser
+```
+
+The app is then available at
+`http://127.0.0.1:8765/card-wars/`. For an integration that starts the server
+from another Python application instead of the command line:
+
+```python
+from threading import Thread
+
+from card_wars_web import create_server
+
+card_wars_server = create_server(port=8766, base_path="/card-wars/")
+Thread(target=card_wars_server.serve_forever, daemon=True).start()
+```
+
+Embed `http://127.0.0.1:8766/card-wars/` in that page. Stop and close the
+returned server when the host application exits:
+
+```python
+card_wars_server.shutdown()
+card_wars_server.server_close()
+```
+
+Keep the server bound to localhost unless you have
+deliberately configured authentication, HTTPS, and network access controls:
+the service accepts image uploads and performs PDF generation.
+
+When serving or proxying the frontend, keep its API routes on the same origin
+and under the same prefix. The page uses `web/index.html`,
+`web/styles.css`, and `web/app.js`; the server also needs to route `/api/sets`,
+`/api/decks`, `/api/download-set`, `/api/download-deck`, `/api/packs/...`,
+`/create-pdf`, `/create-pdf-from-packs`, and `/tokens.pdf` under that prefix.
+`create_server(..., base_path=...)` handles this routing when using this
+project's server.
+
 ### Run the source file
 
 1. Install Python 3.12 or later.
@@ -93,11 +163,13 @@ require an internet connection.
    conversion, or reduce image quality by 20%, 40% (default), or 60% for
    progressively smaller files. Higher compression may cause visible image
    quality loss.
-7. Optionally enable automatic card sizing. The app compares each image's
+7. Optionally enable **Automatically detect each card size and orientation**.
+   In the desktop app, the preset and manual width/height controls are disabled
+   while this option is on. The app compares each image's
    aspect ratio and card filename, assigns Landscape cards the Field Card
    dimensions, detects horizontal orientation, and lays out each detected
    size on its own pages. Unusual or cropped images may not be classified
-   correctly, so manual sizing remains available.
+   correctly; turn the option off to use manual sizing instead.
 8. Select **Create PDF...** and choose where to save the PDF.
 
 Reduced-quality compression re-encodes card images as JPEG at a quality

@@ -579,8 +579,8 @@ class CardWarsApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Card Wars - A4 PDF Creator")
-        self.root.geometry("760x860")
-        self.root.minsize(700, 800)
+        self.root.geometry("760x920")
+        self.root.minsize(700, 860)
         self.paths = []
         self._download_busy = False
         self.deck_choices = {}
@@ -665,12 +665,12 @@ class CardWarsApp:
             row=4, column=0, sticky="w", pady=(12, 4)
         )
         self.preset = tk.StringVar(value="Standard card")
-        preset_box = ttk.Combobox(
+        self.preset_box = ttk.Combobox(
             outer, textvariable=self.preset, values=list(PRESETS.keys()),
             state="readonly", width=25
         )
-        preset_box.grid(row=4, column=1, sticky="w", pady=(12, 4))
-        preset_box.bind("<<ComboboxSelected>>", self.apply_preset)
+        self.preset_box.grid(row=4, column=1, sticky="w", pady=(12, 4))
+        self.preset_box.bind("<<ComboboxSelected>>", self.apply_preset)
 
         self.width_var = tk.StringVar(value="63")
         self.height_var = tk.StringVar(value="88")
@@ -682,6 +682,7 @@ class CardWarsApp:
             value="40% quality reduction (recommended)"
         )
         self.cut_var = tk.BooleanVar(value=True)
+        self.auto_detect_var = tk.BooleanVar(value=False)
 
         fields = [
             ("Card width (mm):", self.width_var),
@@ -689,13 +690,17 @@ class CardWarsApp:
             ("A4 margin (mm):", self.margin_var),
             ("Gap between cards (mm):", self.gap_var),
         ]
+        self.dimension_entries = []
         for i, (label, var) in enumerate(fields, start=5):
             ttk.Label(outer, text=label).grid(
                 row=i, column=0, sticky="w", pady=5
             )
-            ttk.Entry(outer, textvariable=var, width=12).grid(
+            entry = ttk.Entry(outer, textvariable=var, width=12)
+            entry.grid(
                 row=i, column=1, sticky="w", pady=5
             )
+            if i in (5, 6):
+                self.dimension_entries.append(entry)
 
         ttk.Label(outer, text="Page orientation:").grid(
             row=9, column=0, sticky="w", pady=5
@@ -732,24 +737,46 @@ class CardWarsApp:
         ).grid(row=11, column=1, sticky="w", pady=5)
 
         ttk.Checkbutton(
+            outer,
+            text="Automatically detect each card size and orientation",
+            variable=self.auto_detect_var,
+            command=self.update_auto_detect_controls,
+        ).grid(row=12, column=0, columnspan=3, sticky="w", pady=(7, 2))
+        ttk.Label(
+            outer,
+            text=(
+                "Uses image proportions to select standard, hero, or field "
+                "size. Landscape images are printed horizontally; manual "
+                "card dimensions are ignored."
+            ),
+            wraplength=660,
+        ).grid(row=13, column=0, columnspan=3, sticky="w", pady=(0, 4))
+
+        ttk.Checkbutton(
             outer, text="Show cut lines",
             variable=self.cut_var
-        ).grid(row=12, column=0, columnspan=2, sticky="w", pady=(7, 2))
+        ).grid(row=14, column=0, columnspan=2, sticky="w", pady=(4, 2))
 
         note = (
             "The app creates multiple pages if all cards do not fit on one page. "
             "When printing, choose 100% / Actual size."
         )
         ttk.Label(outer, text=note, wraplength=660).grid(
-            row=13, column=0, columnspan=3, sticky="w", pady=(12, 12)
+            row=15, column=0, columnspan=3, sticky="w", pady=(8, 12)
         )
 
         ttk.Button(
             outer, text="Create PDF...", command=self.generate
-        ).grid(row=14, column=0, sticky="w", pady=5)
+        ).grid(row=16, column=0, sticky="w", pady=5)
 
         self.status = ttk.Label(outer, text="Ready.")
-        self.status.grid(row=14, column=1, columnspan=2, sticky="w", padx=10)
+        self.status.grid(row=16, column=1, columnspan=2, sticky="w", padx=10)
+
+    def update_auto_detect_controls(self):
+        auto_detect = self.auto_detect_var.get()
+        self.preset_box.config(state="disabled" if auto_detect else "readonly")
+        for entry in self.dimension_entries:
+            entry.config(state="disabled" if auto_detect else "normal")
 
     def choose_files(self):
         chosen = filedialog.askopenfilenames(
@@ -946,8 +973,11 @@ class CardWarsApp:
             return
 
         try:
-            width = float(self.width_var.get().replace(",", "."))
-            height = float(self.height_var.get().replace(",", "."))
+            if self.auto_detect_var.get():
+                width, height = PRESETS["Standard card"]
+            else:
+                width = float(self.width_var.get().replace(",", "."))
+                height = float(self.height_var.get().replace(",", "."))
             margin = float(self.margin_var.get().replace(",", "."))
             gap = float(self.gap_var.get().replace(",", "."))
             if min(width, height) <= 0 or min(margin, gap) < 0:
@@ -980,6 +1010,7 @@ class CardWarsApp:
                  "60% quality reduction (smallest file)": 60}[
                      self.compression_var.get()
                  ],
+                auto_detect=self.auto_detect_var.get(),
             )
         except Exception as exc:
             messagebox.showerror("PDF creation error", str(exc))
