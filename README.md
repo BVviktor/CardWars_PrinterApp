@@ -17,13 +17,49 @@ or Card Dweeb.
   Multiple copies of a card in a deck are saved as separate images.
 - Choose standard card, hero card, field card, or custom dimensions.
 - Configure page orientation, margins, spacing, image fitting, and cut lines.
+- Reduce PDF size with selectable 20%, 40%, or 60% image-quality reduction
+  (40% by default), with an original-quality option.
+- Optionally infer standard, hero, or field card dimensions and landscape
+  orientation from each image's aspect ratio.
 - Save downloaded images to both a ZIP archive and a folder.
+- Use a browser-based print studio served locally on your computer.
 
 ## Screenshot
 
 ![Screenshot of the Adventure Time: Card Wars PDF Creator app](screenshot.png)
 
 ## Getting started
+
+### Use the browser-based print studio
+
+1. Install Python 3.12 or later and the dependencies listed below.
+2. Start the local web server:
+
+   ```powershell
+   python card_wars_web.py
+   ```
+
+3. The app opens in your browser. Choose image files, adjust the print
+   settings, select a compression level, and choose **Create printable PDF**.
+4. To use Card Dweeb, choose a card set and select **Download set**, or load
+   the deck list, choose a deck, and select **Download deck**. The images are
+   added to the current print selection and the downloaded cards are also
+   saved to a ZIP file.
+5. Select **Download printable tokens** to download the included two-sided
+   token sheet PDF.
+
+The web page and PDF generation run on your computer at `127.0.0.1`; card
+images are not uploaded to an external service. Keep the terminal window open
+while using the page and press **Ctrl+C** there to stop the server. Uploads are
+limited to 256 MB per PDF request when selecting local files. Card Dweeb
+downloads are processed directly from the server's temporary files and are
+not re-uploaded by the browser, so larger downloaded decks avoid that limit.
+
+The browser interface creates PDFs from local image files and server-stored
+Card Dweeb downloads. Card set/deck
+downloads are retrieved from Card Dweeb and its public image sources. Internet
+access is required for the set/deck tools; local image printing does not
+require an internet connection.
 
 ### Run the source file
 
@@ -53,7 +89,20 @@ or Card Dweeb.
    - **Fill (crop edges)** fills the card area and crops any excess at the
      edges.
 5. Enable or disable **Show cut lines** as desired.
-6. Select **Create PDF...** and choose where to save the PDF.
+6. Choose **100% quality** to embed the original image without lossy
+   conversion, or reduce image quality by 20%, 40% (default), or 60% for
+   progressively smaller files. Higher compression may cause visible image
+   quality loss.
+7. Optionally enable automatic card sizing. The app compares each image's
+   aspect ratio and card filename, assigns Landscape cards the Field Card
+   dimensions, detects horizontal orientation, and lays out each detected
+   size on its own pages. Unusual or cropped images may not be classified
+   correctly, so manual sizing remains available.
+8. Select **Create PDF...** and choose where to save the PDF.
+
+Reduced-quality compression re-encodes card images as JPEG at a quality
+corresponding to the selected reduction; it does not change the original image
+files. This can substantially reduce PDFs made from large PNG images.
 
 The app creates as many pages as needed. When printing, choose **100%** or
 **Actual size** rather than scaling the PDF to fit the paper.

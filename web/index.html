@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151829">
+  <title>Card Wars — Print Studio</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true"></div>
+  <main class="page">
+    <header class="hero">
+      <div class="brand-mark" aria-hidden="true">CW</div>
+      <div>
+        <p class="eyebrow">ADVENTURE TIME · CARD WARS</p>
+        <h1>Print Studio</h1>
+        <p class="hero-copy">Turn your card images into a print-ready A4 PDF.</p>
+      </div>
+      <div class="hero-chip"><span></span> Runs locally on your computer</div>
+    </header>
+
+    <form id="pdf-form">
+      <section class="panel upload-panel" aria-labelledby="upload-heading">
+        <div class="section-heading">
+          <div class="step">01</div>
+          <div>
+            <h2 id="upload-heading">Add your cards</h2>
+            <p>Choose one or more card images to arrange on printable pages.</p>
+          </div>
+        </div>
+        <label class="drop-zone" id="drop-zone" for="images">
+          <input id="images" name="images" type="file" accept="image/*" multiple>
+          <span class="upload-icon" aria-hidden="true">↑</span>
+          <strong>Drop card images here</strong>
+          <span>or <span class="browse-link">browse files</span> on your computer</span>
+          <small>PNG, JPG, WEBP and other browser-supported image formats</small>
+        </label>
+        <div id="selection" class="selection" aria-live="polite">No images selected yet.</div>
+        <div id="previews" class="previews" aria-label="Selected card previews"></div>
+      </section>
+
+      <section class="panel carddweeb-panel" aria-labelledby="carddweeb-heading">
+        <div class="section-heading">
+          <div class="step">+</div>
+          <div>
+            <h2 id="carddweeb-heading">Get cards from Card Dweeb</h2>
+            <p>Download a complete card set or deck. Downloaded cards are added to your print selection.</p>
+          </div>
+        </div>
+        <div class="carddweeb-tools">
+          <div class="carddweeb-tool">
+            <label class="field" for="set-select">
+              <span>Card set</span>
+              <select id="set-select"></select>
+            </label>
+            <button class="secondary-button" id="download-set" type="button">Download set</button>
+          </div>
+          <div class="carddweeb-tool deck-tool">
+            <label class="field" for="deck-select">
+              <span>Official or community deck</span>
+              <select id="deck-select" disabled>
+                <option value="">Load the deck list first</option>
+              </select>
+            </label>
+            <div class="deck-actions">
+              <button class="secondary-button" id="load-decks" type="button">Load deck list</button>
+              <button class="secondary-button" id="download-deck" type="button" disabled>Download deck</button>
+            </div>
+          </div>
+        </div>
+        <div id="carddweeb-status" class="carddweeb-status" role="status" aria-live="polite"></div>
+        <p class="download-note">Internet access is required. Images are retrieved from Card Dweeb and its public card-image sources.</p>
+      </section>
+
+      <section class="panel token-panel" aria-labelledby="tokens-heading">
+        <div class="section-heading">
+          <div class="step">↓</div>
+          <div>
+            <h2 id="tokens-heading">Printable game tokens</h2>
+            <p>Download the ready-to-print, two-sided token sheet.</p>
+          </div>
+        </div>
+        <a class="secondary-button token-download" href="/tokens.pdf" download="tokens_printable_2sidedPrint.pdf">
+          Download printable tokens
+        </a>
+      </section>
+
+      <section class="panel settings-panel" aria-labelledby="settings-heading">
+        <div class="section-heading">
+          <div class="step">02</div>
+          <div>
+            <h2 id="settings-heading">Set up your print sheet</h2>
+            <p>Standard card sizing and portrait A4 are selected to get you started.</p>
+          </div>
+        </div>
+        <div class="settings-grid">
+          <label class="field">
+            <span>Card type</span>
+            <select id="preset">
+              <option value="standard">Standard card</option>
+              <option value="hero">Hero card</option>
+              <option value="field">Field card</option>
+              <option value="custom">Custom size</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Page orientation</span>
+            <select id="orientation">
+              <option>Portrait</option>
+              <option>Landscape</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Card width <small>mm</small></span>
+            <input id="width" type="number" min="1" max="250" step="0.1" value="63" required>
+          </label>
+          <label class="field">
+            <span>Card height <small>mm</small></span>
+            <input id="height" type="number" min="1" max="250" step="0.1" value="88" required>
+          </label>
+          <label class="field">
+            <span>A4 page margin <small>mm</small></span>
+            <input id="margin" type="number" min="0" max="100" step="0.1" value="5" required>
+          </label>
+          <label class="field">
+            <span>Gap between cards <small>mm</small></span>
+            <input id="gap" type="number" min="0" max="100" step="0.1" value="2" required>
+          </label>
+          <label class="field field-wide">
+            <span>Image fit</span>
+            <select id="fit">
+              <option>Fit (show entire image)</option>
+              <option>Fill (crop edges)</option>
+            </select>
+          </label>
+        </div>
+        <label class="check-field">
+          <input id="cut-lines" type="checkbox" checked>
+          <span class="checkmark" aria-hidden="true"></span>
+          <span><strong>Show cut lines</strong><small>Light outlines help guide trimming.</small></span>
+        </label>
+        <label class="check-field auto-detect-field">
+          <input id="auto-detect" type="checkbox">
+          <span class="checkmark" aria-hidden="true"></span>
+          <span><strong>Automatically detect each card size and orientation</strong><small>Uses image proportions to select standard, hero, or field size. Landscape images are printed horizontally; manual card dimensions are ignored.</small></span>
+        </label>
+      </section>
+
+      <section class="panel compression-panel" aria-labelledby="compression-heading">
+        <div class="section-heading">
+          <div class="step">03</div>
+          <div>
+            <h2 id="compression-heading">Choose PDF image quality</h2>
+            <p>Choose original quality or trade some image detail for a smaller PDF.</p>
+          </div>
+        </div>
+        <fieldset class="quality-options">
+          <legend class="visually-hidden">Image quality reduction</legend>
+          <label class="quality-option">
+            <input type="radio" name="quality" value="0">
+            <span class="quality-card"><strong>100%</strong><small>Original quality</small></span>
+          </label>
+          <label class="quality-option">
+            <input type="radio" name="quality" value="20">
+            <span class="quality-card"><strong>−20%</strong><small>Higher detail</small></span>
+          </label>
+          <label class="quality-option">
+            <input type="radio" name="quality" value="40" checked>
+            <span class="quality-card recommended"><span class="recommended-label">RECOMMENDED</span><strong>−40%</strong><small>Balanced size</small></span>
+          </label>
+          <label class="quality-option">
+            <input type="radio" name="quality" value="60">
+            <span class="quality-card"><strong>−60%</strong><small>Smallest file</small></span>
+          </label>
+        </fieldset>
+        <p class="quality-note">100% embeds the original image without lossy conversion. Other options convert images to JPEG at the corresponding quality. Source files are never changed.</p>
+      </section>
+
+      <footer class="actions">
+        <div class="status" id="status" role="status" aria-live="polite">Ready when you are.</div>
+        <button id="create-button" class="create-button" type="submit">
+          <span>Create printable PDF</span><span aria-hidden="true">→</span>
+        </button>
+        <p class="print-note">For accurate card sizing, print at <strong>100% / Actual size</strong>.</p>
+      </footer>
+    </form>
+    <p class="disclaimer">Fan-made print helper. Not affiliated with or endorsed by the Adventure Time or Card Wars rights holders.</p>
+  </main>
+</body>
+</html>

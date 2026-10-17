@@ -10,8 +10,10 @@ Run:
 
 from collections import Counter
 import html
+from io import BytesIO
 import math
 import os
+from pathlib import Path
 import re
 import threading
 import time
@@ -21,6 +23,7 @@ import urllib.request
 import zipfile
 from tkinter import filedialog, messagebox, ttk
 
+from PIL import Image
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
@@ -375,7 +378,7 @@ def download_deck_pack(deck_id, deck_name, zip_path, progress=None):
     return deck_name, saved, failed
 
 
-def best_grid(page_w, page_h, margin, gap, card_w, card_h):
+def best_grid(page_w, page_h, margin, gap, card_w, card_h, allow_rotate=True):
     """Find the row and column layout that fits the most cards."""
     usable_w = page_w - 2 * margin
     usable_h = page_h - 2 * margin
@@ -383,7 +386,11 @@ def best_grid(page_w, page_h, margin, gap, card_w, card_h):
         return 0, 0
 
     best = (0, 0, 0)  # count, columns, rows
-    for w, h in ((card_w, card_h), (card_h, card_w)):
+    orientations = (
+        ((card_w, card_h), (card_h, card_w))
+        if allow_rotate else ((card_w, card_h),)
+    )
+    for w, h in orientations:
         cols = int((usable_w + gap) // (w + gap))
         rows = int((usable_h + gap) // (h + gap))
         count = max(0, cols) * max(0, rows)
@@ -392,91 +399,180 @@ def best_grid(page_w, page_h, margin, gap, card_w, card_h):
     return best
 
 
+def detect_card_size(path):
+    """Infer a card preset and orientation from the source image proportions."""
+    presets = (
+        (63.0, 88.0, "standard"),
+        (76.0, 101.0, "hero"),
+        (105.0, 130.0, "field"),
+    )
+    with Image.open(path) as image:
+        image_width, image_height = image.size
+    if image_width <= 0 or image_height <= 0:
+        raise ValueError(f"Could not read image dimensions for {path}.")
+
+    landscape_card = image_width > image_height
+    source_ratio = min(image_width, image_height) / max(image_width, image_height)
+    normalized_name = re.sub(r"[^a-z0-9]", "", Path(path).stem.casefold())
+    is_landscape_type = (
+        source_ratio < 0.705
+        or any(
+            marker in normalized_name
+            for marker in (
+                "landscape",
+                "plains",
+                "cornfield",
+                "swamp",
+                "sandylands",
+                "icyl",
+                "lavaflats",
+            )
+        )
+    )
+    if landscape_card or is_landscape_type:
+        card_width, card_height = 105.0, 130.0
+        if landscape_card:
+            card_width, card_height = card_height, card_width
+        return card_width, card_height, "field"
+
+    card_width, card_height, card_type = min(
+        presets,
+        key=lambda preset: abs(
+            source_ratio - min(preset[0], preset[1]) / max(preset[0], preset[1])
+        ),
+    )
+    expected_ratio = min(card_width, card_height) / max(card_width, card_height)
+    if abs(source_ratio - expected_ratio) > 0.06:
+        raise ValueError(
+            f"Could not reliably detect the card type for {Path(path).name}. "
+            "Turn off automatic sizing and choose a card type manually."
+        )
+    return card_width, card_height, card_type
+
+
 def make_pdf(paths, output_path, card_w_mm, card_h_mm, margin_mm, gap_mm,
-             orientation_name, crop_mode, cut_lines):
+             orientation_name, crop_mode, cut_lines, quality_reduction=0,
+             auto_detect=False):
+    if quality_reduction not in (0, 20, 40, 60):
+        raise ValueError("Image quality reduction must be 0%, 20%, 40%, or 60%.")
+
     page_size = A4 if orientation_name == "Portrait" else landscape(A4)
     page_w, page_h = page_size
-
-    card_w, card_h = mm(card_w_mm), mm(card_h_mm)
     margin, gap = mm(margin_mm), mm(gap_mm)
-
-    # Card boxes may be rotated to improve the layout, but the images
-    # themselves are not rotated automatically.
-    count, cols, rows = best_grid(
-        page_w, page_h, margin, gap, card_w, card_h
-    )
-    if count < 1:
-        raise ValueError(
-            "Cards this large do not fit on the page. Reduce the card size, "
-            "margin, or gap."
-        )
-
-    # Center the card grid within the page margins.
-    usable_w = page_w - 2 * margin
-    usable_h = page_h - 2 * margin
-    grid_w = cols * card_w + max(0, cols - 1) * gap
-    grid_h = rows * card_h + max(0, rows - 1) * gap
-
-    # Use the rotated card orientation if it fits better.
-    if grid_w > usable_w + 0.01 or grid_h > usable_h + 0.01:
-        card_w, card_h = card_h, card_w
-        count, cols, rows = best_grid(
-            page_w, page_h, margin, gap, card_w, card_h
-        )
-        grid_w = cols * card_w + max(0, cols - 1) * gap
-        grid_h = rows * card_h + max(0, rows - 1) * gap
-
-    start_x = (page_w - grid_w) / 2
-    start_y = (page_h + grid_h) / 2 - card_h
-
     pdf = canvas.Canvas(output_path, pagesize=page_size)
     pdf.setTitle("Card Wars - printable cards")
+    groups = {}
+    if auto_detect:
+        for path in paths:
+            width_mm, height_mm, card_type = detect_card_size(path)
+            groups.setdefault((width_mm, height_mm, card_type), []).append(path)
+    else:
+        groups[(card_w_mm, card_h_mm, "custom")] = paths
 
-    for index, path in enumerate(paths):
-        slot = index % count
-        if index > 0 and slot == 0:
+    total_pages = 0
+    max_cards_per_page = 0
+    first_grid = (0, 0)
+    page_started = False
+    for (width_mm, height_mm, _), group_paths in groups.items():
+        card_w, card_h = mm(width_mm), mm(height_mm)
+        count, cols, rows = best_grid(
+            page_w, page_h, margin, gap, card_w, card_h,
+            allow_rotate=not auto_detect,
+        )
+        if count < 1:
+            raise ValueError(
+                f"Cards sized {width_mm:g} x {height_mm:g} mm do not fit "
+                "on this page. Reduce the margin or gap, or change orientation."
+            )
+
+        usable_w = page_w - 2 * margin
+        usable_h = page_h - 2 * margin
+        grid_w = cols * card_w + max(0, cols - 1) * gap
+        grid_h = rows * card_h + max(0, rows - 1) * gap
+        if not auto_detect and (
+            grid_w > usable_w + 0.01 or grid_h > usable_h + 0.01
+        ):
+            card_w, card_h = card_h, card_w
+            count, cols, rows = best_grid(
+                page_w, page_h, margin, gap, card_w, card_h
+            )
+            grid_w = cols * card_w + max(0, cols - 1) * gap
+            grid_h = rows * card_h + max(0, rows - 1) * gap
+
+        if count < 1:
+            raise ValueError("No cards fit on the selected A4 page.")
+        if not page_started:
+            first_grid = (cols, rows)
+        else:
             pdf.showPage()
+        page_started = True
+        start_x = (page_w - grid_w) / 2
+        start_y = (page_h + grid_h) / 2 - card_h
+        total_pages += math.ceil(len(group_paths) / count)
+        max_cards_per_page = max(max_cards_per_page, count)
 
-        col = slot % cols
-        row = slot // cols
-        x = start_x + col * (card_w + gap)
-        y = start_y - row * (card_h + gap)
+        for index, path in enumerate(group_paths):
+            slot = index % count
+            if index > 0 and slot == 0:
+                pdf.showPage()
 
-        # Draw a light outline for cutting.
-        if cut_lines:
-            pdf.setLineWidth(0.35)
-            pdf.setStrokeColorRGB(0.55, 0.55, 0.55)
-            pdf.rect(x, y, card_w, card_h, stroke=1, fill=0)
+            col = slot % cols
+            row = slot // cols
+            x = start_x + col * (card_w + gap)
+            y = start_y - row * (card_h + gap)
 
-        image = ImageReader(path)
-        iw, ih = image.getSize()
-        if iw <= 0 or ih <= 0:
-            continue
+            if cut_lines:
+                pdf.setLineWidth(0.35)
+                pdf.setStrokeColorRGB(0.55, 0.55, 0.55)
+                pdf.rect(x, y, card_w, card_h, stroke=1, fill=0)
 
-        # Preserve the image aspect ratio. Fill mode may crop the edges
-        # if the image aspect ratio differs from the card dimensions.
-        scale = (
-            max(card_w / iw, card_h / ih)
-            if crop_mode == "Fill (crop edges)"
-            else min(card_w / iw, card_h / ih)
-        )
-        draw_w, draw_h = iw * scale, ih * scale
-        dx = x + (card_w - draw_w) / 2
-        dy = y + (card_h - draw_h) / 2
+            if quality_reduction:
+                with Image.open(path) as source:
+                    source.load()
+                    if source.mode in ("RGBA", "LA") or "transparency" in source.info:
+                        rgba = source.convert("RGBA")
+                        background = Image.new("RGB", rgba.size, "white")
+                        background.paste(rgba, mask=rgba.getchannel("A"))
+                        compressed = background
+                    else:
+                        compressed = source.convert("RGB")
+                    image_data = BytesIO()
+                    compressed.save(
+                        image_data,
+                        format="JPEG",
+                        quality=100 - quality_reduction,
+                        optimize=True,
+                    )
+                    image_data.seek(0)
+                image = ImageReader(image_data)
+            else:
+                image = ImageReader(path)
+            iw, ih = image.getSize()
+            if iw <= 0 or ih <= 0:
+                continue
 
-        pdf.saveState()
-        if crop_mode == "Fill (crop edges)":
-            clip = pdf.beginPath()
-            clip.rect(x, y, card_w, card_h)
-            pdf.clipPath(clip, stroke=0, fill=0)
-        pdf.drawImage(
-            image, dx, dy, width=draw_w, height=draw_h,
-            preserveAspectRatio=True, mask="auto"
-        )
-        pdf.restoreState()
+            scale = (
+                max(card_w / iw, card_h / ih)
+                if crop_mode == "Fill (crop edges)"
+                else min(card_w / iw, card_h / ih)
+            )
+            draw_w, draw_h = iw * scale, ih * scale
+            dx = x + (card_w - draw_w) / 2
+            dy = y + (card_h - draw_h) / 2
+
+            pdf.saveState()
+            if crop_mode == "Fill (crop edges)":
+                clip = pdf.beginPath()
+                clip.rect(x, y, card_w, card_h)
+                pdf.clipPath(clip, stroke=0, fill=0)
+            pdf.drawImage(
+                image, dx, dy, width=draw_w, height=draw_h,
+                preserveAspectRatio=True, mask="auto"
+            )
+            pdf.restoreState()
 
     pdf.save()
-    return count, math.ceil(len(paths) / count), (cols, rows)
+    return max_cards_per_page, total_pages, first_grid
 
 
 class CardWarsApp:
@@ -582,6 +678,9 @@ class CardWarsApp:
         self.gap_var = tk.StringVar(value="2")
         self.orientation_var = tk.StringVar(value="Portrait")
         self.fit_var = tk.StringVar(value="Fit (show entire image)")
+        self.compression_var = tk.StringVar(
+            value="40% quality reduction (recommended)"
+        )
         self.cut_var = tk.BooleanVar(value=True)
 
         fields = [
@@ -618,25 +717,39 @@ class CardWarsApp:
             state="readonly", width=30
         ).grid(row=10, column=1, sticky="w", pady=5)
 
+        ttk.Label(outer, text="Image compression:").grid(
+            row=11, column=0, sticky="w", pady=5
+        )
+        ttk.Combobox(
+            outer, textvariable=self.compression_var,
+            values=[
+                "100% quality (original images)",
+                "20% quality reduction (high quality)",
+                "40% quality reduction (recommended)",
+                "60% quality reduction (smallest file)",
+            ],
+            state="readonly", width=30
+        ).grid(row=11, column=1, sticky="w", pady=5)
+
         ttk.Checkbutton(
             outer, text="Show cut lines",
             variable=self.cut_var
-        ).grid(row=11, column=0, columnspan=2, sticky="w", pady=(7, 2))
+        ).grid(row=12, column=0, columnspan=2, sticky="w", pady=(7, 2))
 
         note = (
             "The app creates multiple pages if all cards do not fit on one page. "
             "When printing, choose 100% / Actual size."
         )
         ttk.Label(outer, text=note, wraplength=660).grid(
-            row=12, column=0, columnspan=3, sticky="w", pady=(12, 12)
+            row=13, column=0, columnspan=3, sticky="w", pady=(12, 12)
         )
 
         ttk.Button(
             outer, text="Create PDF...", command=self.generate
-        ).grid(row=13, column=0, sticky="w", pady=5)
+        ).grid(row=14, column=0, sticky="w", pady=5)
 
         self.status = ttk.Label(outer, text="Ready.")
-        self.status.grid(row=13, column=1, columnspan=2, sticky="w", padx=10)
+        self.status.grid(row=14, column=1, columnspan=2, sticky="w", padx=10)
 
     def choose_files(self):
         chosen = filedialog.askopenfilenames(
@@ -860,7 +973,13 @@ class CardWarsApp:
         try:
             count, pages, grid = make_pdf(
                 self.paths, output, width, height, margin, gap,
-                self.orientation_var.get(), self.fit_var.get(), self.cut_var.get()
+                self.orientation_var.get(), self.fit_var.get(), self.cut_var.get(),
+                {"100% quality (original images)": 0,
+                 "20% quality reduction (high quality)": 20,
+                 "40% quality reduction (recommended)": 40,
+                 "60% quality reduction (smallest file)": 60}[
+                     self.compression_var.get()
+                 ],
             )
         except Exception as exc:
             messagebox.showerror("PDF creation error", str(exc))
