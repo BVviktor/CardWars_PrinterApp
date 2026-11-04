@@ -49,7 +49,7 @@ DATABASE_URL = f"{CARDDWEEB}/CardDatabase"
 DECKS_URL = f"{CARDDWEEB}/Decks"
 OFFICIAL_DECKS_URL = f"{CARDDWEEB}/Decks/User?userId=0"
 GITHUB_IMAGES = (
-    "https://raw.githubusercontent.com/itderrickh/CardWarsData/master/images"
+    "https://raw.githubusercontent.com/itderrickh/CardWarsImages/master"
 )
 HTTP_HEADERS = {
     "User-Agent": "CardWarsPDF/1.0 (personal print helper)"
@@ -220,14 +220,8 @@ def safe_filename(name):
 
 def image_urls_for(card):
     filename = os.path.basename(card["image"].split("?")[0])
-    folder = "custom" if card["custom"] else "regular"
     candidates = [
-        f"{GITHUB_IMAGES}/{folder}/{filename}",
-        f"{GITHUB_IMAGES}/upload/{filename}",
-        f"{GITHUB_IMAGES}/regular/{filename}",
-        f"{CARDDWEEB}/CardImages/{folder}/{filename}",
-        f"{CARDDWEEB}/CardImages/upload/{filename}",
-        f"{CARDDWEEB}/CardImages/regular/{filename}",
+        f"{GITHUB_IMAGES}/{filename}"
     ]
     unique = []
     seen = set()
